@@ -7,18 +7,19 @@ export default {
       const gid = url.searchParams.get("gid");
       const rid = url.searchParams.get("rid");
       const cond = url.searchParams.get("cond");
+      const limit = url.searchParams.get("limit") || "18";
 
       if (!uid || !gid || !rid || !cond) {
         return new Response("不正なリクエストパラメータです。Discordから生成されたリンクを踏んでください。", { status: 400 });
       }
 
-      const state = btoa(JSON.stringify({ uid, gid, rid, cond }));
+      const state = btoa(JSON.stringify({ uid, gid, rid, cond, limit }));
       
       const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=480825042598-3a9g4uoeoe1orfvcec0utf5hkrv2p634.apps.googleusercontent.com` +
-        `&redirect_uri=https://googleauthbot.system322940-dev.workers.dev/callback` + 
+        `&redirect_uri=https://googleauthbot.system322940-dev.workers.dev/callback` +
         `&response_type=code` +
-        `&scope=openid%20profile%20email` +
+        `&scope=openid%20profile%20email%20https://www.googleapis.com/auth/user.birthday.read` +
         `&state=${state}`;
 
       return Response.redirect(googleAuthUrl, 302);
@@ -32,7 +33,7 @@ export default {
         return new Response("認証コードまたは状態が確認できませんでした。", { status: 400 });
       }
 
-      const { uid, gid, rid, cond } = JSON.parse(atob(stateStr));
+      const { uid, gid, rid, cond, limit } = JSON.parse(atob(stateStr));
 
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -41,7 +42,7 @@ export default {
           code,
           client_id: "480825042598-3a9g4uoeoe1orfvcec0utf5hkrv2p634.apps.googleusercontent.com",
           client_secret: env.GOOGLE_CLIENT_SECRET, 
-          redirect_uri: "https://googleauthbot.system322940-dev.workers.dev/callback", // 💡ここを変更
+          redirect_uri: "https://googleauthbot.system322940-dev.workers.dev/callback",
           grant_type: "authorization_code"
         })
       });
@@ -51,24 +52,44 @@ export default {
         return new Response("Googleのトークン取得に失敗しました。", { status: 500 });
       }
 
-      const userResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      const peopleResponse = await fetch("https://people.googleapis.com/v1/people/me?personFields=birthdays", {
         headers: { Authorization: `Bearer ${tokenData.access_token}` }
       });
-      const userData = await userResponse.json();
+      const peopleData = await peopleResponse.json();
+
       let isEligible = true;
-      if (cond === "age_18") {
-        isEligible = true; 
+      let userAge = null;
+
+      if (cond === "age_check") {
+        const birthdayObj = peopleData.birthdays?.find(b => b.metadata.source.type === "ACCOUNT")?.date;
+        
+        if (!birthdayObj || !birthdayObj.year || !birthdayObj.month || !birthdayObj.day) {
+          return new Response("Googleアカウントから生年月日を読み取れませんでした。Googleアカウントのプロフィールの公開設定、または生年月日が登録されているか確認してください。", { status: 403 });
+        }
+
+        const today = new Date();
+        const birthDate = new Date(birthdayObj.year, birthdayObj.month - 1, birthdayObj.day);
+        
+        userAge = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+          userAge--;
+        }
+
+        const requiredAge = parseInt(limit, 10);
+        if (userAge < requiredAge) {
+          isEligible = false;
+        }
       }
 
       if (!isEligible) {
-        return new Response("認証条件を満たしていません。", { status: 403 });
+        return new Response(`認証条件を満たしていません。このサーバーは${limit}歳以上限定ですが、あなたの年齢は${userAge}歳と判定されました。`, { status: 403 });
       }
-
       const discordResponse = await fetch(`https://discord.com/api/v10/guilds/${gid}/members/${uid}/roles/${rid}`, {
         method: "PUT",
         headers: {
           Authorization: `Bot ${env.DISCORD_TOKEN}`,
-          "X-Audit-Log-Reason": "Google Auth Verification Success"
+          "X-Audit-Log-Reason": `Google Auth Success (Age: ${userAge || "N/A"})`
         }
       });
 
@@ -76,7 +97,7 @@ export default {
         return Response.redirect("https://googleauthbot.pages.dev/success.html", 302);
       } else {
         const errText = await discordResponse.text();
-        return new Response(`Discordのロール付与に失敗しました。Botの権限を確認してください。: ${errText}`, { status: 500 });
+        return new Response(`Discordのロール付与に失敗しました。Botの権限か、新しくスラッシュコマンドを叩き直したか確認してください。: ${errText}`, { status: 500 });
       }
     }
 
