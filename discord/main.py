@@ -68,7 +68,7 @@ class UserVerifyView(discord.ui.View):
 
     @discord.ui.button(label="認証を開始する", style=discord.ButtonStyle.blurple, custom_id="start_verify_btn")
     async def start_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        base_url = "https://gogleauthbot.system322940-dev.workers.dev/"
+        base_url = "https://googleauthbot.system322940-dev.workers.dev/"
         params = f"?uid={interaction.user.id}&gid={interaction.guild.id}&rid={self.role_id}&cond={self.condition}"
         auth_url = base_url + params
 
