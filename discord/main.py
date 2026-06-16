@@ -20,7 +20,6 @@ async def start_server():
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
 
-
 class VerificationSetupView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -66,5 +65,34 @@ class UserVerifyView(discord.ui.View):
         super().__init__(timeout=None)
         self.role_id = role_id
         self.condition = condition
+
     @discord.ui.button(label="認証を開始する", style=discord.ButtonStyle.blurple, custom_id="start_verify_btn")
-    async def start_verify(self, interaction: discord.Interaction, button: discord
+    async def start_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        base_url = "https://gogleauthbot.system322940-dev.workers.dev/"
+        params = f"?uid={interaction.user.id}&gid={interaction.guild.id}&rid={self.role_id}&cond={self.condition}"
+        auth_url = base_url + params
+
+        link_view = discord.ui.View()
+        link_view.add_item(discord.ui.Button(label="Googleでログインして認証", url=auth_url))
+        
+        await interaction.response.send_message(
+            "あなた専用の認証リンクを作成しました。以下のボタンから連携を行ってください。",
+            view=link_view,
+            ephemeral=True
+        )
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user.name}")
+    bot.add_view(UserVerifyView(None, None)) 
+    await bot.tree.sync()
+    asyncio.create_task(start_server())
+
+@bot.tree.command(name="verify", description="管理用：認証設定パネルを呼び出します。")
+@app_commands.default_permissions(administrator=True)
+async def verify_command(interaction: discord.Interaction):
+    view = VerificationSetupView()
+    await interaction.response.send_message("認証の設定を行ってください：", view=view, ephemeral=True)
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+bot.run(TOKEN)
