@@ -20,11 +20,13 @@ async def start_server():
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
 
+
 class VerificationSetupView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, age_limit: int):
         super().__init__(timeout=None)
         self.selected_role = None
         self.selected_condition = None
+        self.age_limit = age_limit
 
     @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="1. 付与するロールを選択してください", min_values=1, max_values=1)
     async def select_role(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
@@ -35,8 +37,7 @@ class VerificationSetupView(discord.ui.View):
         placeholder="2. 認証条件（有効化するもの）を選択してください",
         options=[
             discord.SelectOption(label="Googleアカウント連携のみ", value="google"),
-            discord.SelectOption(label="Google連携 + 成人限定(18歳以上)", value="age_18"),
-            discord.SelectOption(label="Google連携 + アカウント作成1年以上", value="account_age_1")
+            discord.SelectOption(label="Google連携 + 指定年齢以上(誕生日認証)", value="age_check")
         ]
     )
     async def select_condition(self, interaction: discord.Interaction, select: discord.ui.Select):
@@ -51,25 +52,27 @@ class VerificationSetupView(discord.ui.View):
 
         embed = discord.Embed(
             title="Googleアカウント認証",
-            description="下のボタンを押してGoogleアカウントと連携し、認証を完了してください。",
+            description=f"下のボタンを押してGoogleアカウントと連携し、認証を完了してください。\n"
+                        f"※年齢制限が有効な場合、{self.age_limit}歳以上である必要があります。",
             color=discord.Color.blue()
         )
         
-        view = UserVerifyView(self.selected_role.id, self.selected_condition)
+        view = UserVerifyView(self.selected_role.id, self.selected_condition, self.age_limit)
         await interaction.channel.send(embed=embed, view=view)
         await interaction.response.send_message("認証パネルを設置しました！", ephemeral=True)
 
 
 class UserVerifyView(discord.ui.View):
-    def __init__(self, role_id, condition):
+    def __init__(self, role_id, condition, age_limit):
         super().__init__(timeout=None)
         self.role_id = role_id
         self.condition = condition
+        self.age_limit = age_limit
 
     @discord.ui.button(label="認証を開始する", style=discord.ButtonStyle.blurple, custom_id="start_verify_btn")
     async def start_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
         base_url = "https://googleauthbot.system322940-dev.workers.dev/"
-        params = f"?uid={interaction.user.id}&gid={interaction.guild.id}&rid={self.role_id}&cond={self.condition}"
+        params = f"?uid={interaction.user.id}&gid={interaction.guild.id}&rid={self.role_id}&cond={self.condition}&limit={self.age_limit}"
         auth_url = base_url + params
 
         link_view = discord.ui.View()
@@ -81,18 +84,20 @@ class UserVerifyView(discord.ui.View):
             ephemeral=True
         )
 
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
-    bot.add_view(UserVerifyView(None, None)) 
+    bot.add_view(UserVerifyView(None, None, None)) 
     await bot.tree.sync()
     asyncio.create_task(start_server())
 
 @bot.tree.command(name="verify", description="管理用：認証設定パネルを呼び出します。")
+@app_commands.describe(age_limit="制限したい年齢を入力（例: 18）※年齢制限を使わない場合も適当に数値を入れてください")
 @app_commands.default_permissions(administrator=True)
-async def verify_command(interaction: discord.Interaction):
-    view = VerificationSetupView()
-    await interaction.response.send_message("認証の設定を行ってください：", view=view, ephemeral=True)
+async def verify_command(interaction: discord.Interaction, age_limit: int = 18):
+    view = VerificationSetupView(age_limit)
+    await interaction.response.send_message(f"認証の設定を行ってください（設定年齢: {age_limit}歳以上）：", view=view, ephemeral=True)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 bot.run(TOKEN)
