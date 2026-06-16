@@ -16,7 +16,7 @@ export default {
       
       const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=480825042598-3a9g4uoeoe1orfvcec0utf5hkrv2p634.apps.googleusercontent.com` +
-        `&redirect_uri=https://gogleauthbot.system322940-dev.workers.dev/callback` + // 💡ここを変更
+        `&redirect_uri=https://googleauthbot.system322940-dev.workers.dev/callback` + 
         `&response_type=code` +
         `&scope=openid%20profile%20email` +
         `&state=${state}`;
@@ -41,7 +41,7 @@ export default {
           code,
           client_id: "480825042598-3a9g4uoeoe1orfvcec0utf5hkrv2p634.apps.googleusercontent.com",
           client_secret: env.GOOGLE_CLIENT_SECRET, 
-          redirect_uri: "https://gogleauthbot.system322940-dev.workers.dev/callback", // 💡ここを変更
+          redirect_uri: "https://googleauthbot.system322940-dev.workers.dev/callback", // 💡ここを変更
           grant_type: "authorization_code"
         })
       });
