@@ -20,7 +20,6 @@ async def start_server():
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
 
-
 class VerificationSetupView(discord.ui.View):
     def __init__(self, age_limit: int):
         super().__init__(timeout=None)
@@ -57,22 +56,29 @@ class VerificationSetupView(discord.ui.View):
             color=discord.Color.blue()
         )
         
-        view = UserVerifyView(self.selected_role.id, self.selected_condition, self.age_limit)
+        embed.set_footer(text=f"⚙️ System Data: {self.selected_role.id}|{self.selected_condition}|{self.age_limit}")
+        
+        view = UserVerifyView()
         await interaction.channel.send(embed=embed, view=view)
-        await interaction.response.send_message("認証パネルを設置しました！", ephemeral=True)
+        await interaction.response.send_message("認証パネルを設置しました！永続化されているため、Bot再起動後も動作します。", ephemeral=True)
 
 
 class UserVerifyView(discord.ui.View):
-    def __init__(self, role_id, condition, age_limit):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.role_id = role_id
-        self.condition = condition
-        self.age_limit = age_limit
 
-    @discord.ui.button(label="認証を開始する", style=discord.ButtonStyle.blurple, custom_id="start_verify_btn")
+    @discord.ui.button(label="認証を開始する", style=discord.ButtonStyle.blurple, custom_id="persistent_verify_btn")
     async def start_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            footer_text = interaction.message.embeds[0].footer.text
+            data_str = footer_text.split("System Data: ")[1]
+            role_id, condition, age_limit = data_str.split("|")
+        except Exception:
+            await interaction.response.send_message("パネルデータの読み取りに失敗しました。管理者に連絡して新しくパネルを設置し直してください。", ephemeral=True)
+            return
+
         base_url = "https://googleauthbot.system322940-dev.workers.dev/"
-        params = f"?uid={interaction.user.id}&gid={interaction.guild.id}&rid={self.role_id}&cond={self.condition}&limit={self.age_limit}"
+        params = f"?uid={interaction.user.id}&gid={interaction.guild.id}&rid={role_id}&cond={condition}&limit={age_limit}"
         auth_url = base_url + params
 
         link_view = discord.ui.View()
@@ -84,11 +90,10 @@ class UserVerifyView(discord.ui.View):
             ephemeral=True
         )
 
-
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
-    bot.add_view(UserVerifyView(None, None, None)) 
+    bot.add_view(UserVerifyView()) 
     await bot.tree.sync()
     asyncio.create_task(start_server())
 
